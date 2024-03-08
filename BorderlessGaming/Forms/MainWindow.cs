@@ -12,6 +12,7 @@ using BorderlessGaming.Logic.Steam;
 using BorderlessGaming.Logic.Misc;
 using BorderlessGaming.Logic.Windows;
 using BorderlessGaming.Properties;
+using System.Runtime.InteropServices;
 
 namespace BorderlessGaming.Forms
 {
@@ -1099,6 +1100,16 @@ fav.PositionX.ToString()), out int favPositionX);
             if (UserPreferences.Instance.Settings.UseMouseLockHotKey is true)
             {
                 Native.RegisterHotKey(Handle, GetType().GetHashCode(), 0, MouseLockHotKey);
+
+                mouseLockTimer.Interval = 16;
+                mouseLockTimer.Tick += new EventHandler(mouseLockTimer_Tick);
+                mouseLockTimer.Start();
+            }
+            else
+            {
+                mouseLockTimer.Stop();
+                mouseLockCursorClip = Rectangle.Empty;
+                Cursor.Clip = Rectangle.Empty;
             }
 
             if (UserPreferences.Instance.Settings.UseMouseHideHotKey is true)
@@ -1181,13 +1192,40 @@ fav.PositionX.ToString()), out int favPositionX);
 
                     var clipRect = new Rectangle(p.X, p.Y, rect.Right - rect.Left, rect.Bottom - rect.Top);
 
-                    Cursor.Clip = Cursor.Clip.Equals(clipRect) ? Rectangle.Empty : clipRect;
+                    mouseLockCursorClip = mouseLockCursorClip.Equals(clipRect) ? Rectangle.Empty : clipRect;
+
+                    mouseLockhWnd = hWnd;
+
+                    mouseLockTimer_Tick(null, null);
 
                     return; // handled the message, do not call base WndProc for this message
                 }
             }
 
             base.WndProc(ref m);
+        }
+
+        [DllImport("User32.dll")]
+        private static extern short GetAsyncKeyState(int vKey);
+        private static readonly int VK_MENU = 0x12; // Alt
+        private readonly Timer mouseLockTimer = new();
+        private Rectangle mouseLockCursorClip = Rectangle.Empty;
+        private nint mouseLockhWnd;
+
+        private void mouseLockTimer_Tick(object sender, EventArgs e)
+        {
+            short keyState = GetAsyncKeyState(VK_MENU);
+            bool isPressed = ((keyState >> 15) & 0x1) != 0x0;
+
+            var hWnd = Native.GetForegroundWindow();
+
+            if (mouseLockhWnd == hWnd)
+            {
+                if (mouseLockCursorClip.Contains(Cursor.Position))
+                    Cursor.Clip = isPressed ? Rectangle.Empty : mouseLockCursorClip;
+                else
+                    Cursor.Clip = Rectangle.Empty;
+            }
         }
 
         #endregion
